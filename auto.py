@@ -8,6 +8,7 @@ import json
 import re
 import requests
 import urllib3
+import argparse
 from apscheduler.schedulers.blocking import BlockingScheduler
 from halo import Halo
 
@@ -51,15 +52,20 @@ class DaKa(object):
             res = self.sess.get(self.base_url, headers=self.header, verify=False)
             html = res.content.decode()
 
-        jsontext = re.findall(r'oldInfo: [\s\S]*tipMsg', html)[0]
-        jsontext = eval(jsontext[jsontext.find("{"):jsontext.rfind(",")].replace(" ", ""))
-        # jsontext["geo_api_info"] = json.loads(jsontext["geo_api_info"])
+        jsontext = re.findall(r'def = {[\s\S]*?};', html)[0]
+        jsontext = eval(jsontext[jsontext.find("{"):jsontext.rfind(";")].replace(" ", ""))
+
+        geo_text = jsontext['geo_api_info']
+        geo_text = geo_text.replace("false", "False").replace("true", "True")
+        geo_obj = eval(geo_text)['addressComponent']
+        area = geo_obj['province'] + " " + geo_obj['city'] + " " + geo_obj['district']
         name = re.findall(r'realname: "([^\"]+)",', html)[0]
         number = re.findall(r"number: '([^\']+)',", html)[0]
 
         new_info = jsontext.copy()
         new_info['name'] = name
         new_info['number'] = number
+        new_info['area'] = area
         new_info["date"] = self.get_date()
         new_info["created"] = round(time.time())
         self.info = new_info
@@ -100,30 +106,11 @@ def main(username, password, eai_sess, UUkey):
 
 
 if __name__ == "__main__":
-    if os.path.exists('./config.json'):
-        configs = json.loads(open('./config.json', 'r', encoding='utf-8').read())
-        username = configs["username"]
-        password = configs["password"]
-        hour = configs["schedule"]["hour"]
-        minute = configs["schedule"]["minute"]
-        eai_sess = configs["cookie"]["eai_sess"]
-        UUkey = configs["cookie"]["UUkey"]
-    else:
-        username = input("👤 中南大学学工号: ")
-        password = getpass.getpass('🔑 中南大学信息门户密码: ')
-        print("⏲ 请输入定时时间（默认每天7:05）")
-        hour = input("\thour: ") or 7
-        minute = input("\tminute: ") or 5
-        eai_sess = input("请输入eai-sess cookie: ")
-        UUkey = input("请输入UUkey cookie: ")
-
-    # Schedule task
-    scheduler = BlockingScheduler()
-    scheduler.add_job(main, 'cron', args=[username, password, eai_sess, UUkey], hour=hour, minute=minute)
-    print('⏰ 已启动定时程序，每天 %02d:%02d 为您打卡' % (int(hour), int(minute)))
-    print('Press Ctrl+{0} to exit'.format('Break' if os.name == 'nt' else 'C'))
-
-    try:
-        scheduler.start()
-    except (KeyboardInterrupt, SystemExit):
-        pass
+    parser = argparse.ArgumentParser(description='manual to this script')
+    parser.add_argument('--username', type=str, default=None)
+    parser.add_argument('--password', type=str, default=None)
+    parser.add_argument('--eai-sess', type=str, default=None)
+    parser.add_argument('--UUkey', type=str, default=None)
+    args = parser.parse_args()
+    print("用户信息：", args)
+    main(args.username, args.password, args.eai_sess, args.UUkey)
